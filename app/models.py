@@ -19,6 +19,7 @@ class Pelanggan(db.Model):
     id_pelanggan = db.Column(db.Integer, primary_key=True)
     no_meja = db.Column(db.String(20), nullable=False)
     status_bayaran = db.Column(db.String(20), default='Belum Bayar')
+    tarikh_masa = db.Column(db.DateTime, default=datetime.utcnow)
     gambar_makanan = db.Column(db.String(255), nullable=True)
     harga_makanan = db.Column(db.Numeric(10, 2), nullable=False, default=0, server_default='0')
     pesanan = db.relationship('Pesanan', backref='pelanggan', lazy=True)
@@ -31,7 +32,7 @@ class Menu(db.Model):
     kategori = db.Column(db.String(20), nullable=False, default='Panas')
     status_menu = db.Column(db.Boolean, default=True)
     gambar_minuman = db.Column(db.String(255), nullable=True)
-    pesanan = db.relationship('Pesanan', backref='menu', cascade='all, delete-orphan', lazy=True)
+    pesanan = db.relationship('Pesanan', backref='menu', lazy=True)
 
 class Pesanan(db.Model):
     __tablename__ = 'pesanan'

@@ -1,4 +1,4 @@
-"""One-off migration for databases created before the image features.
+"""One-off migration for databases created before the image and food-price features.
 
 db.create_all() creates missing tables but does not add columns to existing ones,
 so run this once against an existing database:
@@ -15,6 +15,7 @@ NEW_COLUMNS = [
     ('menu', 'gambar_minuman', 'VARCHAR(255)'),
     ('pelanggan', 'gambar_makanan', 'VARCHAR(255)'),
     ('pelanggan', 'harga_makanan', 'NUMERIC(10, 2) NOT NULL DEFAULT 0'),
+    ('pelanggan', 'tarikh_masa', 'DATETIME'),
 ]
 
 app = create_app()

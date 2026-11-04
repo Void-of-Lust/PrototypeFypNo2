@@ -14,6 +14,14 @@ VALID_CATEGORIES = ('Panas', 'Sejuk')
 def drinks_folder():
     return os.path.join(current_app.static_folder, 'uploads', 'drinks')
 
+
+def customer_order_date(customer):
+    """Date a customer's order was placed. Older rows have no tarikh_masa, so fall back to their first drink."""
+    if customer.tarikh_masa:
+        return customer.tarikh_masa.date()
+    times = [p.tarikh_masa for p in customer.pesanan if p.tarikh_masa]
+    return min(times).date() if times else None
+
 @admin_bp.before_request
 def restrict_to_admin():
     if session.get('user_role') != 'admin':
@@ -40,6 +48,20 @@ def dashboard():
             if order_date in sales_by_date:
                 sales_by_date[order_date] += float(order.kuantiti * order.menu.harga)
 
+    # Food revenue: Pelanggan.harga_makanan is added once per customer. A customer counts when
+    # they have at least one completed drink order, or, for a food-only order with no drinks
+    # (so nothing for the kitchen to complete), once it has been paid.
+    completed_customer_ids = {order.id_pelanggan for order in completed_orders}
+    for cust in Pelanggan.query.filter(Pelanggan.harga_makanan > 0).all():
+        has_completed_drinks = cust.id_pelanggan in completed_customer_ids
+        paid_food_only = not cust.pesanan and cust.status_bayaran == 'Sudah Bayar'
+        if not (has_completed_drinks or paid_food_only):
+            continue
+        total_sales += cust.harga_makanan
+        order_date = customer_order_date(cust)
+        if order_date in sales_by_date:
+            sales_by_date[order_date] += float(cust.harga_makanan)
+
     max_sale = max(sales_by_date.values()) if sales_by_date and max(sales_by_date.values()) > 0 else 1.0
     chart_data = []
     for d in chart_days:
@@ -58,7 +80,7 @@ def dashboard():
 
     for t in table_list:
         cust = Pelanggan.query.filter_by(no_meja=t).order_by(Pelanggan.id_pelanggan.desc()).first()
-        if cust and cust.pesanan:
+        if cust and (cust.pesanan or cust.gambar_makanan):
             drinks_total = sum((p.kuantiti * p.menu.harga for p in cust.pesanan if p.menu), Decimal('0'))
             food_price = cust.harga_makanan or Decimal('0')
             table_data.append({
@@ -170,13 +192,4 @@ def toggle_menu(drink_id):
     drink = Menu.query.get_or_404(drink_id)
     drink.status_menu = not drink.status_menu
     db.session.commit()
-    return redirect(url_for('admin.dashboard'))
-
-@admin_bp.route('/menu/<int:drink_id>/delete', methods=['POST'])
-def delete_menu(drink_id):
-    drink = Menu.query.get_or_404(drink_id)
-    image = drink.gambar_minuman
-    db.session.delete(drink)
-    db.session.commit()
-    delete_upload(drinks_folder(), image)
     return redirect(url_for('admin.dashboard'))

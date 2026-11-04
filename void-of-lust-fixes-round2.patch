@@ -1,0 +1,198 @@
+diff --git a/app/admin/routes.py b/app/admin/routes.py
+index 6a23208..1b3a2c5 100644
+--- a/app/admin/routes.py
++++ b/app/admin/routes.py
+@@ -14,6 +14,14 @@ VALID_CATEGORIES = ('Panas', 'Sejuk')
+ def drinks_folder():
+     return os.path.join(current_app.static_folder, 'uploads', 'drinks')
+ 
++
++def customer_order_date(customer):
++    """Date a customer's order was placed. Older rows have no tarikh_masa, so fall back to their first drink."""
++    if customer.tarikh_masa:
++        return customer.tarikh_masa.date()
++    times = [p.tarikh_masa for p in customer.pesanan if p.tarikh_masa]
++    return min(times).date() if times else None
++
+ @admin_bp.before_request
+ def restrict_to_admin():
+     if session.get('user_role') != 'admin':
+@@ -40,6 +48,20 @@ def dashboard():
+             if order_date in sales_by_date:
+                 sales_by_date[order_date] += float(order.kuantiti * order.menu.harga)
+ 
++    # Food revenue: Pelanggan.harga_makanan is added once per customer. A customer counts when
++    # they have at least one completed drink order, or, for a food-only order with no drinks
++    # (so nothing for the kitchen to complete), once it has been paid.
++    completed_customer_ids = {order.id_pelanggan for order in completed_orders}
++    for cust in Pelanggan.query.filter(Pelanggan.harga_makanan > 0).all():
++        has_completed_drinks = cust.id_pelanggan in completed_customer_ids
++        paid_food_only = not cust.pesanan and cust.status_bayaran == 'Sudah Bayar'
++        if not (has_completed_drinks or paid_food_only):
++            continue
++        total_sales += cust.harga_makanan
++        order_date = customer_order_date(cust)
++        if order_date in sales_by_date:
++            sales_by_date[order_date] += float(cust.harga_makanan)
++
+     max_sale = max(sales_by_date.values()) if sales_by_date and max(sales_by_date.values()) > 0 else 1.0
+     chart_data = []
+     for d in chart_days:
+@@ -58,7 +80,7 @@ def dashboard():
+ 
+     for t in table_list:
+         cust = Pelanggan.query.filter_by(no_meja=t).order_by(Pelanggan.id_pelanggan.desc()).first()
+-        if cust and cust.pesanan:
++        if cust and (cust.pesanan or cust.gambar_makanan):
+             drinks_total = sum((p.kuantiti * p.menu.harga for p in cust.pesanan if p.menu), Decimal('0'))
+             food_price = cust.harga_makanan or Decimal('0')
+             table_data.append({
+@@ -171,12 +193,3 @@ def toggle_menu(drink_id):
+     drink.status_menu = not drink.status_menu
+     db.session.commit()
+     return redirect(url_for('admin.dashboard'))
+-
+-@admin_bp.route('/menu/<int:drink_id>/delete', methods=['POST'])
+-def delete_menu(drink_id):
+-    drink = Menu.query.get_or_404(drink_id)
+-    image = drink.gambar_minuman
+-    db.session.delete(drink)
+-    db.session.commit()
+-    delete_upload(drinks_folder(), image)
+-    return redirect(url_for('admin.dashboard'))
+diff --git a/app/customer/routes.py b/app/customer/routes.py
+index 14cb4c0..f5d9673 100644
+--- a/app/customer/routes.py
++++ b/app/customer/routes.py
+@@ -58,6 +58,7 @@ def view_menu():
+     current_table = session.get('table_number', 'Dine-In')
+     drinks = Menu.query.filter_by(status_menu=True).all()
+     return render_template('customer/menu.html', drinks=drinks, table_number=current_table,
++                           has_food=bool(session.get('food_image')),
+                            max_qty=MAX_QTY_PER_ITEM, max_total=MAX_TOTAL_QTY)
+ 
+ @customer_bp.route('/order', methods=['POST'])
+@@ -87,7 +88,10 @@ def place_order():
+         lines.append((drink, qty, notes))
+         total_qty += qty
+ 
+-    if total_qty == 0:
++    # A food-only order ("Makan Sahaja") has no drinks, but it does have an uploaded food photo.
++    # Without a photo, an order with no drinks is still rejected.
++    food_image = session.get('food_image')
++    if total_qty == 0 and not food_image:
+         flash('Sila pilih sekurang-kurangnya satu minuman.', 'warning')
+         return redirect(url_for('customer.view_menu'))
+     if total_qty > MAX_TOTAL_QTY:
+@@ -95,7 +99,7 @@ def place_order():
+         return redirect(url_for('customer.view_menu'))
+ 
+     customer = Pelanggan(no_meja=table_no, status_bayaran='Belum Bayar',
+-                         gambar_makanan=session.get('food_image'))
++                         gambar_makanan=food_image)
+     db.session.add(customer)
+     db.session.flush()  # assigns id_pelanggan without committing yet
+ 
+diff --git a/app/models.py b/app/models.py
+index a3b79bc..46cc31b 100644
+--- a/app/models.py
++++ b/app/models.py
+@@ -19,6 +19,7 @@ class Pelanggan(db.Model):
+     id_pelanggan = db.Column(db.Integer, primary_key=True)
+     no_meja = db.Column(db.String(20), nullable=False)
+     status_bayaran = db.Column(db.String(20), default='Belum Bayar')
++    tarikh_masa = db.Column(db.DateTime, default=datetime.utcnow)
+     gambar_makanan = db.Column(db.String(255), nullable=True)
+     harga_makanan = db.Column(db.Numeric(10, 2), nullable=False, default=0, server_default='0')
+     pesanan = db.relationship('Pesanan', backref='pelanggan', lazy=True)
+@@ -31,7 +32,7 @@ class Menu(db.Model):
+     kategori = db.Column(db.String(20), nullable=False, default='Panas')
+     status_menu = db.Column(db.Boolean, default=True)
+     gambar_minuman = db.Column(db.String(255), nullable=True)
+-    pesanan = db.relationship('Pesanan', backref='menu', cascade='all, delete-orphan', lazy=True)
++    pesanan = db.relationship('Pesanan', backref='menu', lazy=True)
+ 
+ class Pesanan(db.Model):
+     __tablename__ = 'pesanan'
+diff --git a/app/templates/admin/dashboardAdmin.html b/app/templates/admin/dashboardAdmin.html
+index 1731984..410bd65 100644
+--- a/app/templates/admin/dashboardAdmin.html
++++ b/app/templates/admin/dashboardAdmin.html
+@@ -95,9 +95,6 @@
+                                 <form action="/admin/menu/{{ drink.id_menu }}/toggle" method="POST">
+                                     <button class="btn btn-sm btn-warning py-0 px-2">Set Status</button>
+                                 </form>
+-                                <form action="/admin/menu/{{ drink.id_menu }}/delete" method="POST" onsubmit="return confirm('Padam minuman ini?');">
+-                                    <button class="btn btn-sm btn-outline-danger py-0 px-2">Padam</button>
+-                                </form>
+                             </div>
+                         </td>
+                     </tr>
+diff --git a/app/templates/customer/menu.html b/app/templates/customer/menu.html
+index 5e88b7b..642855a 100644
+--- a/app/templates/customer/menu.html
++++ b/app/templates/customer/menu.html
+@@ -57,6 +57,11 @@
+             <div id="cartItemsContainer" class="mb-4">
+                 <!-- Item troli akan dijana oleh JS -->
+             </div>
++            {% if has_food %}
++            <div class="alert alert-light border small mb-4">
++                Gambar makanan anda telah dimuat naik. Harga makanan akan disahkan oleh pengurus.
++            </div>
++            {% endif %}
+ 
+             <div class="card p-3 border-0 shadow-sm bg-light">
+                 <div class="d-flex justify-content-between mb-2">
+@@ -66,13 +71,14 @@
+                     <span>Jumlah:</span>
+                     <span id="cartTotalDisplay">RM 0.00</span>
+                 </div>
+-                <button type="submit" class="btn btn-secondary w-100 py-2 mt-3" id="submitBtn" disabled>Hantar Pesanan</button>
++                <button type="submit" class="btn btn-secondary w-100 py-2 mt-3" id="submitBtn" {% if not has_food %}disabled{% endif %}>Hantar Pesanan</button>
+             </div>
+         </div>
+     </form>
+ </div>
+ 
+ <script>
++const HAS_FOOD = {{ 'true' if has_food else 'false' }};
+ const MAX_QTY = {{ max_qty }};
+ const MAX_TOTAL = {{ max_total }};
+ let cartTotal = 0;
+@@ -105,7 +111,7 @@ function updateQty(id, change, price) {
+         cartTotal += (change * price);
+         totalItems += change;
+         document.getElementById('cartCount').innerText = totalItems;
+-        document.getElementById('submitBtn').disabled = totalItems === 0;
++        document.getElementById('submitBtn').disabled = totalItems === 0 && !HAS_FOOD;
+     }
+ }
+ 
+diff --git a/app/templates/kitchen/dashboardDapur.html b/app/templates/kitchen/dashboardDapur.html
+index dc7e531..ddd948b 100644
+--- a/app/templates/kitchen/dashboardDapur.html
++++ b/app/templates/kitchen/dashboardDapur.html
+@@ -1,4 +1,3 @@
+-html
+ {% extends 'base.html' %}
+ 
+ {% block content %}
+diff --git a/migrate_add_image_columns.py b/migrate_add_image_columns.py
+index 6f0dee3..1ac27ed 100644
+--- a/migrate_add_image_columns.py
++++ b/migrate_add_image_columns.py
+@@ -1,4 +1,4 @@
+-"""One-off migration for databases created before the image features.
++"""One-off migration for databases created before the image and food-price features.
+ 
+ db.create_all() creates missing tables but does not add columns to existing ones,
+ so run this once against an existing database:
+@@ -15,6 +15,7 @@ NEW_COLUMNS = [
+     ('menu', 'gambar_minuman', 'VARCHAR(255)'),
+     ('pelanggan', 'gambar_makanan', 'VARCHAR(255)'),
+     ('pelanggan', 'harga_makanan', 'NUMERIC(10, 2) NOT NULL DEFAULT 0'),
++    ('pelanggan', 'tarikh_masa', 'DATETIME'),
+ ]
+ 
+ app = create_app()

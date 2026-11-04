@@ -58,6 +58,7 @@ def view_menu():
     current_table = session.get('table_number', 'Dine-In')
     drinks = Menu.query.filter_by(status_menu=True).all()
     return render_template('customer/menu.html', drinks=drinks, table_number=current_table,
+                           has_food=bool(session.get('food_image')),
                            max_qty=MAX_QTY_PER_ITEM, max_total=MAX_TOTAL_QTY)
 
 @customer_bp.route('/order', methods=['POST'])
@@ -87,7 +88,10 @@ def place_order():
         lines.append((drink, qty, notes))
         total_qty += qty
 
-    if total_qty == 0:
+    # A food-only order ("Makan Sahaja") has no drinks, but it does have an uploaded food photo.
+    # Without a photo, an order with no drinks is still rejected.
+    food_image = session.get('food_image')
+    if total_qty == 0 and not food_image:
         flash('Sila pilih sekurang-kurangnya satu minuman.', 'warning')
         return redirect(url_for('customer.view_menu'))
     if total_qty > MAX_TOTAL_QTY:
@@ -95,7 +99,7 @@ def place_order():
         return redirect(url_for('customer.view_menu'))
 
     customer = Pelanggan(no_meja=table_no, status_bayaran='Belum Bayar',
-                         gambar_makanan=session.get('food_image'))
+                         gambar_makanan=food_image)
     db.session.add(customer)
     db.session.flush()  # assigns id_pelanggan without committing yet
 

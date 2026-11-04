@@ -57,6 +57,11 @@
             <div id="cartItemsContainer" class="mb-4">
                 <!-- Item troli akan dijana oleh JS -->
             </div>
+            {% if has_food %}
+            <div class="alert alert-light border small mb-4">
+                Gambar makanan anda telah dimuat naik. Harga makanan akan disahkan oleh pengurus.
+            </div>
+            {% endif %}
 
             <div class="card p-3 border-0 shadow-sm bg-light">
                 <div class="d-flex justify-content-between mb-2">
@@ -66,13 +71,14 @@
                     <span>Jumlah:</span>
                     <span id="cartTotalDisplay">RM 0.00</span>
                 </div>
-                <button type="submit" class="btn btn-secondary w-100 py-2 mt-3" id="submitBtn" disabled>Hantar Pesanan</button>
+                <button type="submit" class="btn btn-secondary w-100 py-2 mt-3" id="submitBtn" {% if not has_food %}disabled{% endif %}>Hantar Pesanan</button>
             </div>
         </div>
     </form>
 </div>
 
 <script>
+const HAS_FOOD = {{ 'true' if has_food else 'false' }};
 const MAX_QTY = {{ max_qty }};
 const MAX_TOTAL = {{ max_total }};
 let cartTotal = 0;
@@ -105,7 +111,7 @@ function updateQty(id, change, price) {
         cartTotal += (change * price);
         totalItems += change;
         document.getElementById('cartCount').innerText = totalItems;
-        document.getElementById('submitBtn').disabled = totalItems === 0;
+        document.getElementById('submitBtn').disabled = totalItems === 0 && !HAS_FOOD;
     }
 }
 
