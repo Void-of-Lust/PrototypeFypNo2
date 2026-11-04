@@ -1,0 +1,62 @@
+
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="app-header shadow-sm bg-white text-dark text-center p-3 border-bottom">
+    <h5 class="fw-bold mb-0">Status pesanan</h5>
+</div>
+
+<div class="p-4">
+    <div class="card p-3 mb-4 shadow-sm border-0 text-center">
+        <div class="mb-3">
+            <h6 class="fw-bold">⏱️ Pesanan Dihantar</h6>
+            <small class="text-muted">Pesanan anda sedang menunggu pengesahan dapur</small>
+        </div>
+
+        <!-- Timeline Stepper -->
+        <div class="d-flex justify-content-between position-relative mt-4">
+            <div class="progress position-absolute top-50 start-0 translate-middle-y w-100" style="height: 4px; z-index: 1;">
+                <div class="progress-bar bg-dark" role="progressbar" style="width: 33%;"></div>
+            </div>
+            <div class="bg-dark text-white rounded-circle position-relative fw-bold d-flex align-items-center justify-content-center" style="width: 30px; height: 30px; z-index: 2;">1</div>
+            <div class="bg-light text-secondary border rounded-circle position-relative fw-bold d-flex align-items-center justify-content-center" style="width: 30px; height: 30px; z-index: 2;">2</div>
+            <div class="bg-light text-secondary border rounded-circle position-relative fw-bold d-flex align-items-center justify-content-center" style="width: 30px; height: 30px; z-index: 2;">3</div>
+        </div>
+        <div class="d-flex justify-content-between mt-2 small text-muted">
+            <span>Dihantar</span>
+            <span>Diproses</span>
+            <span>Siap!</span>
+        </div>
+    </div>
+
+    <div class="card p-3 shadow-sm border-0 mb-4 bg-light">
+        <div class="d-flex justify-content-between mb-2 border-bottom pb-2">
+            <span class="fw-bold">Ringkasan bayaran :</span>
+            <span class="badge bg-secondary">Meja {{ table_number }}</span>
+        </div>
+        {% for item in orders %}
+        <div class="d-flex justify-content-between small mb-1">
+            <span>{{ item.kuantiti }}x {{ item.menu.nama_minuman }}</span>
+            <span>RM {{ "%.2f"|format(item.kuantiti * item.menu.harga) }}</span>
+        </div>
+        {% endfor %}
+        {% if has_food %}
+        <div class="d-flex justify-content-between small mb-1">
+            <span>Makanan</span>
+            <span>{% if food_price > 0 %}RM {{ "%.2f"|format(food_price) }}{% else %}Menunggu pengesahan harga{% endif %}</span>
+        </div>
+        {% endif %}
+        <div class="d-flex justify-content-between fw-bold mt-2 pt-2 border-top border-dark">
+            <span>Jumlah:</span>
+            <span>RM {{ "%.2f"|format(total_price) }}</span>
+        </div>
+    </div>
+
+    <div class="d-flex gap-2">
+        <div class="card flex-fill p-2 text-center border-dark"><small>No. Pesanan</small><strong class="fs-5">#000{{ customer_id }}</strong></div>
+        <div class="card flex-fill p-2 text-center border-dark"><small>Masa</small><strong class="fs-5">{{ orders[0].tarikh_masa.strftime('%I:%M %p') if orders else '-' }}</strong></div>
+    </div>
+
+    <a href="/menu?table={{ table_number }}" class="btn btn-outline-secondary w-100 mt-4 py-2">Tambah menu</a>
+</div>
+{% endblock %}

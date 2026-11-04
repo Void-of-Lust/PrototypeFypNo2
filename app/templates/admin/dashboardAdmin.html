@@ -1,0 +1,253 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="app-header bg-dark text-white d-flex justify-content-between align-items-center">
+    <span class="fw-bold">Dashboard Admin</span>
+    <a href="/logout" class="btn btn-sm btn-outline-light">Log out</a>
+</div>
+
+<div class="p-3">
+    <!-- Tab Navigation -->
+    <div class="row g-2 mb-3">
+        <div class="col-4">
+            <button class="btn btn-dark w-100 btn-sm py-2 fw-semibold nav-tab-btn active" onclick="switchTab('tab-menu', this)">
+                Kemaskini Menu
+            </button>
+        </div>
+        <div class="col-4">
+            <button class="btn btn-outline-dark w-100 btn-sm py-2 fw-semibold nav-tab-btn" onclick="switchTab('tab-bayaran', this)">
+                Status Meja
+            </button>
+        </div>
+        <div class="col-4">
+            <button class="btn btn-outline-dark w-100 btn-sm py-2 fw-semibold nav-tab-btn" onclick="switchTab('tab-laporan', this)">
+                Laporan Jualan
+            </button>
+        </div>
+    </div>
+
+    <!-- TAB 1: KEMASKINI MENU -->
+    <div id="tab-menu" class="admin-tab">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+            <h6 class="fw-bold mb-0">Senarai Menu Minuman</h6>
+            <button class="btn btn-sm btn-success" data-bs-toggle="collapse" data-bs-target="#addMenuForm">+ Tambah Menu</button>
+        </div>
+
+        <div class="collapse mb-3" id="addMenuForm">
+            <div class="card p-3 border-0 shadow-sm bg-light">
+                <form action="/admin/menu/add" method="POST" enctype="multipart/form-data" class="row g-2">
+                    <div class="col-6">
+                        <input type="text" name="nama_minuman" class="form-control form-control-sm" placeholder="Nama Minuman" maxlength="100" required>
+                    </div>
+                    <div class="col-3">
+                        <select name="kategori" class="form-select form-select-sm">
+                            <option value="Panas">Panas</option>
+                            <option value="Sejuk">Sejuk</option>
+                        </select>
+                    </div>
+                    <div class="col-3">
+                        <input type="number" step="0.10" min="0.10" max="9999.99" name="harga" class="form-control form-control-sm" placeholder="RM" required>
+                    </div>
+                    <div class="col-8">
+                        <input type="file" name="gambar_minuman" class="form-control form-control-sm" accept=".png,.jpg,.jpeg,.webp,image/png,image/jpeg,image/webp">
+                        <div class="form-text">Gambar minuman (pilihan). PNG, JPG atau WEBP, maksimum 5 MB.</div>
+                    </div>
+                    <div class="col-4">
+                        <button type="submit" class="btn btn-sm btn-primary w-100">Simpan</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <div class="table-responsive bg-white rounded shadow-sm border">
+            <table class="table table-hover align-middle mb-0 text-center">
+                <thead class="table-dark">
+                    <tr>
+                        <th>Minuman</th>
+                        <th>Kategori</th>
+                        <th>Harga</th>
+                        <th>Status</th>
+                        <th>Tindakan</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for drink in drinks %}
+                    <tr>
+                        <td class="fw-semibold text-start ps-3">
+                            <div class="d-flex align-items-center gap-2">
+                                {% if drink.gambar_minuman %}
+                                <img src="{{ url_for('static', filename='uploads/drinks/' + drink.gambar_minuman) }}" alt="{{ drink.nama_minuman }}" class="rounded flex-shrink-0" style="width: 36px; height: 36px; object-fit: cover;">
+                                {% else %}
+                                <div class="bg-light border rounded flex-shrink-0" style="width: 36px; height: 36px;"></div>
+                                {% endif %}
+                                <span>{{ drink.nama_minuman }}</span>
+                            </div>
+                        </td>
+                        <td><span class="badge bg-secondary">{{ drink.kategori }}</span></td>
+                        <td>RM {{ "%.2f"|format(drink.harga) }}</td>
+                        <td>
+                            <span class="badge {% if drink.status_menu %}bg-success{% else %}bg-danger{% endif %}">
+                                {% if drink.status_menu %}ada{% else %}tiada{% endif %}
+                            </span>
+                        </td>
+                        <td>
+                            <div class="d-flex justify-content-center gap-1">
+                                <form action="/admin/menu/{{ drink.id_menu }}/toggle" method="POST">
+                                    <button class="btn btn-sm btn-warning py-0 px-2">Set Status</button>
+                                </form>
+                                <form action="/admin/menu/{{ drink.id_menu }}/delete" method="POST" onsubmit="return confirm('Padam minuman ini?');">
+                                    <button class="btn btn-sm btn-outline-danger py-0 px-2">Padam</button>
+                                </form>
+                            </div>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- TAB 2: STATUS MEJA & PENGESAHAN BAYARAN -->
+    <div id="tab-bayaran" class="admin-tab d-none">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+            <h6 class="fw-bold mb-0">Status Pesanan & Pengesahan Bayaran Meja</h6>
+            <small class="text-muted">Semak gambar makanan dan sahkan harga</small>
+        </div>
+        <div class="row g-3">
+            {% for item in table_data %}
+            <div class="col-6">
+                {% if item.has_orders %}
+                {% set paid = item.status_bayaran == 'Sudah Bayar' %}
+                <div class="card p-3 text-center border shadow-sm h-100 {% if paid %}border-success bg-success-subtle{% else %}border-warning bg-warning-subtle{% endif %}">
+                    <h6 class="fw-bold mb-2 text-dark">Meja {{ item.table_name }}</h6>
+
+                    {% if item.food_image %}
+                    <a href="{{ url_for('static', filename='uploads/food/' + item.food_image) }}" target="_blank" rel="noopener" class="d-block mb-2" title="Buka gambar penuh">
+                        <img src="{{ url_for('static', filename='uploads/food/' + item.food_image) }}" alt="Gambar makanan Meja {{ item.table_name }}" class="w-100 rounded border" style="height: 110px; object-fit: cover;">
+                    </a>
+                    {% endif %}
+
+                    <div class="mb-2 py-1 bg-white rounded border">
+                        <small class="text-muted d-block extra-small">Jumlah Perlu Dibayar</small>
+                        <span class="fw-bold fs-6 text-dark">RM {{ "%.2f"|format(item.total_due) }}</span>
+                        {% if item.food_image %}
+                        <small class="text-muted d-block extra-small">Minuman RM {{ "%.2f"|format(item.drinks_total) }} + Makanan RM {{ "%.2f"|format(item.food_price) }}</small>
+                        {% endif %}
+                    </div>
+
+                    {% if item.food_image %}
+                    <form action="/admin/table/{{ item.customer_id }}/food_price" method="POST" class="input-group input-group-sm mb-2">
+                        <span class="input-group-text">RM</span>
+                        <input type="number" name="harga_makanan" min="0" max="9999.99" step="0.01" value="{{ '%.2f'|format(item.food_price) }}" class="form-control" aria-label="Harga makanan Meja {{ item.table_name }}" required {% if paid %}disabled{% endif %}>
+                        <button type="submit" class="btn btn-outline-dark" {% if paid %}disabled{% endif %}>Simpan</button>
+                    </form>
+                    {% endif %}
+
+                    <form action="/admin/table/{{ item.customer_id }}/toggle_payment" method="POST" class="mt-auto">
+                        <button type="submit" class="btn btn-sm w-100 py-2 {% if paid %}btn-success{% else %}btn-danger{% endif %}" title="Klik untuk tukar status bayaran">
+                            {{ item.status_bayaran }}
+                        </button>
+                    </form>
+                </div>
+                {% else %}
+                <div class="card p-3 text-center border border-light bg-white opacity-75 h-100">
+                    <h6 class="fw-bold mb-1 text-muted">Meja {{ item.table_name }}</h6>
+                    <div class="my-2 py-1 bg-light rounded border">
+                        <small class="text-muted d-block extra-small">Jumlah Perlu Dibayar</small>
+                        <span class="fw-bold fs-6 text-muted">RM 0.00</span>
+                    </div>
+                    <span class="badge bg-secondary py-2">Tiada Pesanan</span>
+                </div>
+                {% endif %}
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+
+    <!-- TAB 3: LAPORAN JUALAN (DYNAMIC GRAPH) -->
+    <div id="tab-laporan" class="admin-tab d-none">
+        <div class="row g-2 mb-3">
+            <div class="col-4">
+                <div class="card p-2 text-center border-0 shadow-sm bg-white">
+                    <small class="text-muted">Jumlah Jualan</small>
+                    <h6 class="fw-bold text-success mb-0">RM {{ "%.2f"|format(total_sales) }}</h6>
+                </div>
+            </div>
+            <div class="col-4">
+                <div class="card p-2 text-center border-0 shadow-sm bg-white">
+                    <small class="text-muted">Pesanan</small>
+                    <h6 class="fw-bold text-primary mb-0">{{ total_orders }}</h6>
+                </div>
+            </div>
+            <div class="col-4">
+                <div class="card p-2 text-center border-0 shadow-sm bg-white">
+                    <small class="text-muted">Terjual</small>
+                    <h6 class="fw-bold text-dark mb-0">{{ total_drinks_sold }} cawan</h6>
+                </div>
+            </div>
+        </div>
+
+        <!-- Dynamic Sales Bar Chart -->
+        <div class="card p-3 mb-3 border-0 shadow-sm bg-white">
+            <h6 class="fw-bold mb-3">Carta Jualan 7 Hari Terakhir (RM)</h6>
+            <div class="d-flex align-items-end justify-content-between bg-light p-3 rounded" style="height: 160px;">
+                {% for item in chart_data %}
+                <div class="d-flex flex-column align-items-center" style="width: 13%;">
+                    <small class="text-muted extra-small mb-1">RM {{ "%.0f"|format(item.amount) }}</small>
+                    <div class="bg-primary rounded-top w-100" style="height: {{ item.height_pct }}%; min-height: 6px;"></div>
+                    <small class="fw-bold mt-1" style="font-size: 0.75rem;">{{ item.day_name }}</small>
+                    <small class="text-muted extra-small" style="font-size: 0.65rem;">{{ item.date_str }}</small>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+
+        <!-- Transaction Log -->
+        <h6 class="fw-bold mb-2">Rekod Transaksi</h6>
+        <div class="table-responsive bg-white rounded shadow-sm border">
+            <table class="table table-sm table-striped align-middle mb-0 text-center small">
+                <thead class="table-dark">
+                    <tr>
+                        <th>NO. PESANAN</th>
+                        <th>MEJA</th>
+                        <th>MASA</th>
+                        <th>ITEM</th>
+                        <th>JUMLAH</th>
+                        <th>STATUS</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for t in transactions %}
+                    <tr>
+                        <td>#P{{ "%04d"|format(t.id_pesanan) }}</td>
+                        <td>{{ t.pelanggan.no_meja if t.pelanggan else '-' }}</td>
+                        <td>{{ t.tarikh_masa.strftime('%H:%M') }}</td>
+                        <td>{{ t.kuantiti }}x {{ t.menu.nama_minuman if t.menu else '' }}</td>
+                        <td>RM {{ "%.2f"|format(t.kuantiti * t.menu.harga) if t.menu else '0.00' }}</td>
+                        <td><span class="badge bg-success">{{ t.status_pesanan }}</span></td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="6" class="text-muted py-3">Tiada rekod transaksi.</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<script>
+function switchTab(tabId, btn) {
+    document.querySelectorAll('.admin-tab').forEach(tab => tab.classList.add('d-none'));
+    document.querySelectorAll('.nav-tab-btn').forEach(b => {
+        b.classList.remove('btn-dark', 'text-white', 'active');
+        b.classList.add('btn-outline-dark');
+    });
+
+    document.getElementById(tabId).classList.remove('d-none');
+    btn.classList.remove('btn-outline-dark');
+    btn.classList.add('btn-dark', 'text-white', 'active');
+}
+</script>
+{% endblock %}
