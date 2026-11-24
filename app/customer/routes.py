@@ -3,7 +3,7 @@ from flask import (Blueprint, render_template, request, session, redirect,
                    url_for, jsonify, current_app, flash)
 from app.extensions import db
 from app.models import Menu, Pelanggan, Pesanan
-from app.utils import UploadError, save_image, delete_upload
+from app.utils import UploadError, save_image, delete_upload, normalize_table
 
 customer_bp = Blueprint('customer', __name__)
 
@@ -19,10 +19,14 @@ def food_folder():
 
 @customer_bp.route('/')
 def welcome():
-    table_no = request.args.get('table')
-    if table_no:
-        session['table_number'] = table_no
-    current_table = session.get('table_number', 'Dine-In')
+    raw_table = request.args.get('table')
+    if raw_table is not None:
+        table_no = normalize_table(raw_table)
+        if table_no:
+            session['table_number'] = table_no
+        else:
+            flash('Nombor meja tidak sah. Sila imbas semula kod QR meja anda.', 'warning')
+    current_table = normalize_table(session.get('table_number'))
     return render_template('customer/welcome.html', table_number=current_table)
 
 @customer_bp.route('/select_type', methods=['POST'])
@@ -58,10 +62,14 @@ def upload_food():
 
 @customer_bp.route('/menu')
 def view_menu():
-    table_no = request.args.get('table')
-    if table_no:
-        session['table_number'] = table_no
-    current_table = session.get('table_number', 'Dine-In')
+    raw_table = request.args.get('table')
+    if raw_table is not None:
+        table_no = normalize_table(raw_table)
+        if table_no:
+            session['table_number'] = table_no
+        else:
+            flash('Nombor meja tidak sah. Sila imbas semula kod QR meja anda.', 'warning')
+    current_table = normalize_table(session.get('table_number'))
     drinks = Menu.query.filter_by(status_menu=True).all()
     open_cart = request.args.get('cart') == '1'
 
@@ -80,7 +88,10 @@ def view_menu():
 
 @customer_bp.route('/order', methods=['POST'])
 def place_order():
-    table_no = session.get('table_number', 'Dine-In')
+    table_no = normalize_table(session.get('table_number'))
+    if not table_no:
+        flash('Nombor meja tidak sah atau belum ditetapkan. Sila imbas kod QR meja anda.', 'danger')
+        return redirect(url_for('customer.welcome'))
     jenis_pesanan = request.form.get('jenis_pesanan', 'Dine-In')
     if jenis_pesanan not in VALID_ORDER_TYPES:
         jenis_pesanan = 'Dine-In'
@@ -125,12 +136,15 @@ def place_order():
         if existing and existing.no_meja == table_no and existing.status_bayaran != 'Sudah Bayar':
             customer = existing
 
+    old_food_image = None
     if customer is None:
         customer = Pelanggan(no_meja=table_no, jenis_pesanan=jenis_pesanan,
                              status_bayaran='Belum Bayar', gambar_makanan=food_image)
         db.session.add(customer)
         db.session.flush()  # assigns id_pelanggan without committing yet
-    elif food_image and not customer.gambar_makanan:
+    elif food_image:
+        if customer.gambar_makanan and customer.gambar_makanan != food_image:
+            old_food_image = customer.gambar_makanan
         customer.gambar_makanan = food_image
 
     for drink, qty, notes in lines:
@@ -138,10 +152,14 @@ def place_order():
             id_pelanggan=customer.id_pelanggan,
             id_menu=drink.id_menu,
             kuantiti=qty,
+            harga_semasa=drink.harga,
             nota_tambahan=notes,
             status_pesanan='Baru'
         ))
     db.session.commit()  # customer and items are saved together or not at all
+
+    if old_food_image:
+        delete_upload(food_folder(), old_food_image)
 
     # The food photo now lives on the Pelanggan row; the order owner is remembered for /status
     session.pop('food_image', None)
@@ -158,7 +176,7 @@ def order_status(customer_id):
     customer = Pelanggan.query.get_or_404(customer_id)
     orders = Pesanan.query.filter_by(id_pelanggan=customer_id).all()
     food_price = customer.harga_makanan or 0
-    total_price = sum(o.kuantiti * o.menu.harga for o in orders if o.menu) + food_price
+    total_price = sum(o.kuantiti * o.unit_price for o in orders) + food_price
 
     return render_template('customer/success.html',
                            table_number=customer.no_meja,

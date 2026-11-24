@@ -259,9 +259,9 @@
                     <tr>
                         <td>#P{{ "%04d"|format(t.id_pesanan) }}</td>
                         <td>{{ t.pelanggan.no_meja if t.pelanggan else '-' }}</td>
-                        <td>{{ t.tarikh_masa.strftime('%H:%M') }}</td>
+                        <td>{{ (t.tarikh_masa|myt).strftime('%H:%M') }}</td>
                         <td>{{ t.kuantiti }}x {{ t.menu.nama_minuman if t.menu else '' }}</td>
-                        <td>RM {{ "%.2f"|format(t.kuantiti * t.menu.harga) if t.menu else '0.00' }}</td>
+                        <td>RM {{ "%.2f"|format(t.kuantiti * t.unit_price) }}</td>
                         <td>
                             <span class="badge {% if t.status_pesanan == 'Selesai' %}bg-success{% elif t.status_pesanan == 'Diproses' %}bg-primary{% else %}bg-warning text-dark{% endif %}">
                                 {{ t.status_pesanan }}

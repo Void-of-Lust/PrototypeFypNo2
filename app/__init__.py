@@ -5,7 +5,7 @@ from werkzeug.security import check_password_hash
 from dotenv import load_dotenv
 from app.extensions import db
 from app.models import Admin, Dapur
-from app.utils import MAX_IMAGE_MB
+from app.utils import MAX_IMAGE_MB, to_myt
 
 # Load environment variables from .env file
 load_dotenv()
@@ -32,13 +32,14 @@ def create_app():
         pass
 
     db.init_app(app)
+    app.jinja_env.filters['myt'] = to_myt
 
     @app.route('/login', methods=['GET', 'POST'])
     def login():
         if request.method == 'POST':
             role = request.form.get('role')
-            username = request.form.get('username')
-            password = request.form.get('password')
+            username = (request.form.get('username') or '').strip()
+            password = request.form.get('password') or ''
 
             if role == 'admin':
                 user = Admin.query.filter_by(nama_admin=username).first()

@@ -1,10 +1,11 @@
 import os
-from datetime import datetime, timedelta
+from datetime import timedelta
 from decimal import Decimal
 from flask import Blueprint, render_template, request, redirect, url_for, session, flash, current_app
 from app.extensions import db
 from app.models import Menu, Pesanan, Pelanggan
-from app.utils import UploadError, save_image, delete_upload, parse_price
+from app.utils import (UploadError, save_image, delete_upload, parse_price,
+                       VALID_TABLES, myt_today, to_myt)
 
 admin_bp = Blueprint('admin', __name__)
 
@@ -16,11 +17,11 @@ def drinks_folder():
 
 
 def customer_order_date(customer):
-    """Date a customer's order was placed. Older rows have no tarikh_masa, so fall back to their first drink."""
+    """Date a customer's order was placed in MYT. Older rows have no tarikh_masa, so fall back to their first drink."""
     if customer.tarikh_masa:
-        return customer.tarikh_masa.date()
+        return to_myt(customer.tarikh_masa).date()
     times = [p.tarikh_masa for p in customer.pesanan if p.tarikh_masa]
-    return min(times).date() if times else None
+    return to_myt(min(times)).date() if times else None
 
 @admin_bp.before_request
 def restrict_to_admin():
@@ -32,8 +33,8 @@ def dashboard():
     drinks = Menu.query.all()
     completed_orders = Pesanan.query.filter_by(status_pesanan='Selesai').all()
 
-    # Dynamic 7-Day Sales Calculation & Daily KPIs (Hari Ini)
-    today = datetime.utcnow().date()
+    # Dynamic 7-Day Sales Calculation & Daily KPIs (Hari Ini, MYT / UTC+8)
+    today = myt_today()
     chart_days = [today - timedelta(days=i) for i in range(6, -1, -1)]
     sales_by_date = {d: 0.0 for d in chart_days}
 
@@ -42,9 +43,9 @@ def dashboard():
     today_drinks_sold = 0
 
     for order in completed_orders:
-        if order.tarikh_masa and order.menu:
-            order_date = order.tarikh_masa.date()
-            line_total = order.kuantiti * order.menu.harga
+        if order.tarikh_masa:
+            order_date = to_myt(order.tarikh_masa).date()
+            line_total = order.kuantiti * order.unit_price
             if order_date in sales_by_date:
                 sales_by_date[order_date] += float(line_total)
             if order_date == today:
@@ -82,13 +83,12 @@ def dashboard():
         })
 
     # Table Status & Payment Calculation (Meja A1 - A10)
-    table_list = [f"A{i}" for i in range(1, 11)]
     table_data = []
 
-    for t in table_list:
+    for t in VALID_TABLES:
         cust = Pelanggan.query.filter_by(no_meja=t).order_by(Pelanggan.id_pelanggan.desc()).first()
         if cust and (cust.pesanan or cust.gambar_makanan):
-            drinks_total = sum((p.kuantiti * p.menu.harga for p in cust.pesanan if p.menu), Decimal('0'))
+            drinks_total = sum((p.kuantiti * p.unit_price for p in cust.pesanan), Decimal('0'))
             food_price = cust.harga_makanan or Decimal('0')
             table_data.append({
                 'table_name': t,

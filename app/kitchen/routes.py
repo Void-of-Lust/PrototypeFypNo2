@@ -1,8 +1,8 @@
-from datetime import datetime
 from flask import Blueprint, render_template, request, redirect, url_for, session
 from sqlalchemy import or_
 from app.extensions import db
 from app.models import Pesanan
+from app.utils import utc_now, myt_start_of_today_utc
 
 kitchen_bp = Blueprint('kitchen', __name__)
 
@@ -17,12 +17,12 @@ def restrict_to_kitchen():
 @kitchen_bp.route('/orders')
 def live_orders():
     # Show all active orders plus today's completed orders so the 'Siap' tab works
-    start_of_today = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+    start_of_today = myt_start_of_today_utc()
     orders = (Pesanan.query
               .filter(or_(Pesanan.status_pesanan != 'Selesai', Pesanan.tarikh_masa >= start_of_today))
               .order_by(Pesanan.tarikh_masa.desc())
               .all())
-    now = datetime.utcnow()
+    now = utc_now()
     return render_template('kitchen/dashboardDapur.html', orders=orders, now=now)
 
 @kitchen_bp.route('/order/<int:order_id>/status', methods=['POST'])

@@ -9,10 +9,16 @@
 <div class="p-4">
     <div class="card p-3 mb-4 shadow-sm border-0 text-center">
         <div class="mb-3">
+            {% if orders %}
             <h6 class="fw-bold" id="statusTitle">⏱️ Pesanan Dihantar</h6>
             <small class="text-muted" id="statusSubtitle">Pesanan anda sedang menunggu pengesahan dapur</small>
+            {% else %}
+            <h6 class="fw-bold" id="statusTitle">📸 Gambar Makanan Diterima</h6>
+            <small class="text-muted" id="statusSubtitle">Menunggu pengurus menyemak dan mengesahkan harga makanan anda.</small>
+            {% endif %}
         </div>
 
+        {% if orders %}
         <!-- Timeline Stepper -->
         <div class="d-flex justify-content-between position-relative mt-4">
             <div class="progress position-absolute top-50 start-0 translate-middle-y w-100" style="height: 4px; z-index: 1;">
@@ -27,6 +33,7 @@
             <span>Diproses</span>
             <span>Siap!</span>
         </div>
+        {% endif %}
     </div>
 
     <div class="card p-3 shadow-sm border-0 mb-4 bg-light">
@@ -37,7 +44,7 @@
         {% for item in orders %}
         <div class="d-flex justify-content-between small mb-1">
             <span>{{ item.kuantiti }}x {{ item.menu.nama_minuman }}</span>
-            <span>RM {{ "%.2f"|format(item.kuantiti * item.menu.harga) }}</span>
+            <span>RM {{ "%.2f"|format(item.kuantiti * item.unit_price) }}</span>
         </div>
         {% endfor %}
         {% if has_food %}
@@ -54,7 +61,7 @@
 
     <div class="d-flex gap-2">
         <div class="card flex-fill p-2 text-center border-dark"><small>No. Pesanan</small><strong class="fs-5">#{{ "%04d"|format(customer_id) }}</strong></div>
-        <div class="card flex-fill p-2 text-center border-dark"><small>Masa</small><strong class="fs-5">{{ orders[0].tarikh_masa.strftime('%I:%M %p') if orders else (order_time.strftime('%I:%M %p') if order_time else '-') }}</strong></div>
+        <div class="card flex-fill p-2 text-center border-dark"><small>Masa</small><strong class="fs-5">{{ (orders[0].tarikh_masa|myt).strftime('%I:%M %p') if orders else ((order_time|myt).strftime('%I:%M %p') if order_time else '-') }}</strong></div>
     </div>
 
     <a href="/menu?table={{ table_number }}" class="btn btn-outline-secondary w-100 mt-4 py-2">Tambah menu</a>
@@ -74,8 +81,26 @@ function setStepActive(el, active) {
     }
 }
 
-function updateOrderProgress(orders) {
-    if (!orders || orders.length === 0) return;
+function updateFoodOnlyStatus(data) {
+    const title = document.getElementById('statusTitle');
+    const subtitle = document.getElementById('statusSubtitle');
+    if (data.status_bayaran === 'Sudah Bayar') {
+        title.textContent = '✔️ Pembayaran Selesai';
+        subtitle.textContent = 'Terima kasih! Pembayaran anda telah disahkan.';
+    } else if (typeof data.food_price === 'number' && data.food_price > 0) {
+        title.textContent = '💰 Harga Makanan Disahkan';
+        subtitle.textContent = 'Harga makanan anda telah disahkan. Sila buat pembayaran di kaunter.';
+    } else {
+        title.textContent = '📸 Gambar Makanan Diterima';
+        subtitle.textContent = 'Menunggu pengurus menyemak dan mengesahkan harga makanan anda.';
+    }
+}
+
+function updateOrderProgress(orders, data) {
+    if (!orders || orders.length === 0) {
+        updateFoodOnlyStatus(data);
+        return;
+    }
 
     const allDone = orders.every(o => o.status === 'Selesai');
     const anyProcessing = orders.some(o => o.status === 'Diproses' || o.status === 'Selesai');
@@ -112,7 +137,7 @@ async function pollStatus() {
         const res = await fetch(`/api/status/${CUSTOMER_ID}`);
         if (!res.ok) return;
         const data = await res.json();
-        updateOrderProgress(data.orders);
+        updateOrderProgress(data.orders, data);
         if (typeof data.food_price === 'number' && data.food_price > 0) {
             const foodEl = document.getElementById('foodPriceDisplay');
             if (foodEl) foodEl.textContent = `RM ${data.food_price.toFixed(2)}`;

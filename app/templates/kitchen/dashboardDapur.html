@@ -21,7 +21,7 @@
         <div class="card p-3 mb-2 border-start border-4 order-card" data-status="{{ order.status_pesanan }}">
             <div class="d-flex justify-content-between align-items-center mb-2">
                 <h6 class="fw-bold mb-0 text-primary">• Meja {{ order.pelanggan.no_meja }} <span class="text-muted small">#{{ "%04d"|format(order.id_pesanan) }}</span></h6>
-                <small class="text-muted">{{ mins_ago }} minit lalu ({{ order.tarikh_masa.strftime('%H:%M') }})</small>
+                <small class="text-muted">{{ mins_ago }} minit lalu ({{ (order.tarikh_masa|myt).strftime('%H:%M') }})</small>
             </div>
 
             <div class="d-flex align-items-center mb-2">
@@ -81,14 +81,20 @@ function filterKitchen(status, btn) {
 async function refreshOrders() {
     try {
         const res = await fetch('/kitchen/orders');
+        if (res.redirected && res.url.includes('/login')) {
+            window.location.href = res.url;
+            return;
+        }
         if (!res.ok) return;
         const html = await res.text();
         const doc = new DOMParser().parseFromString(html, 'text/html');
         const fresh = doc.getElementById('kitchen-orders');
-        if (fresh) {
-            document.getElementById('kitchen-orders').innerHTML = fresh.innerHTML;
-            applyKitchenFilter(currentFilter);
+        if (!fresh) {
+            window.location.href = '/login';
+            return;
         }
+        document.getElementById('kitchen-orders').innerHTML = fresh.innerHTML;
+        applyKitchenFilter(currentFilter);
     } catch (e) {
         // Ignore transient errors and retry on next interval
     }

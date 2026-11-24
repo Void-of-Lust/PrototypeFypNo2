@@ -1,5 +1,6 @@
-from datetime import datetime
+from decimal import Decimal
 from app.extensions import db
+from app.utils import utc_now
 
 class Admin(db.Model):
     __tablename__ = 'admin'
@@ -20,7 +21,7 @@ class Pelanggan(db.Model):
     no_meja = db.Column(db.String(20), nullable=False)
     jenis_pesanan = db.Column(db.String(20), nullable=False, default='Dine-In', server_default='Dine-In')
     status_bayaran = db.Column(db.String(20), default='Belum Bayar')
-    tarikh_masa = db.Column(db.DateTime, default=datetime.utcnow)
+    tarikh_masa = db.Column(db.DateTime, default=utc_now)
     gambar_makanan = db.Column(db.String(255), nullable=True)
     harga_makanan = db.Column(db.Numeric(10, 2), nullable=False, default=0, server_default='0')
     pesanan = db.relationship('Pesanan', backref='pelanggan', lazy=True)
@@ -40,7 +41,14 @@ class Pesanan(db.Model):
     id_pesanan = db.Column(db.Integer, primary_key=True)
     id_pelanggan = db.Column(db.Integer, db.ForeignKey('pelanggan.id_pelanggan'), nullable=False)
     id_menu = db.Column(db.Integer, db.ForeignKey('menu.id_menu'), nullable=False)
-    tarikh_masa = db.Column(db.DateTime, default=datetime.utcnow)
+    tarikh_masa = db.Column(db.DateTime, default=utc_now)
     status_pesanan = db.Column(db.Enum('Baru', 'Diproses', 'Selesai', name='status_pesanan_enum'), default='Baru', nullable=False)
     nota_tambahan = db.Column(db.String(255), nullable=True)
     kuantiti = db.Column(db.Integer, default=1, nullable=False)
+    harga_semasa = db.Column(db.Numeric(10, 2), nullable=True)
+
+    @property
+    def unit_price(self):
+        if self.harga_semasa is not None:
+            return self.harga_semasa
+        return self.menu.harga if self.menu else Decimal('0.00')

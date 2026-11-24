@@ -1,3 +1,1 @@
-from flask import Blueprint
-
-admin_bp = Blueprint('admin', __name__)
+# Package marker; blueprints are defined in routes.py.

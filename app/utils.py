@@ -1,5 +1,6 @@
 import os
 import uuid
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal, InvalidOperation
 
 from werkzeug.utils import secure_filename
@@ -7,6 +8,8 @@ from werkzeug.utils import secure_filename
 ALLOWED_IMAGE_EXTENSIONS = {'png', 'jpg', 'jpeg', 'webp'}
 MAX_IMAGE_BYTES = 5 * 1024 * 1024  # 5 MB per image
 MAX_IMAGE_MB = MAX_IMAGE_BYTES // (1024 * 1024)
+VALID_TABLES = tuple(f'A{i}' for i in range(1, 11))
+MYT = timezone(timedelta(hours=8))
 
 
 class UploadError(ValueError):
@@ -80,3 +83,36 @@ def parse_price(raw, maximum=Decimal('9999.99')):
     if not value.is_finite() or value < 0 or value > maximum:
         return None
     return value.quantize(Decimal('0.01'))
+
+
+def normalize_table(raw):
+    """Return a valid table code (A1-A10) or None if the input is invalid."""
+    if not raw:
+        return None
+    cleaned = str(raw).strip().upper()
+    return cleaned if cleaned in VALID_TABLES else None
+
+
+def utc_now():
+    """Current UTC timestamp as a naive datetime (matches SQLite/MySQL DATETIME columns)."""
+    return datetime.now(timezone.utc).replace(tzinfo=None)
+
+
+def to_myt(dt):
+    """Convert a naive UTC (or tz-aware) datetime to Malaysia Time (UTC+8)."""
+    if dt is None:
+        return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(MYT)
+
+
+def myt_today():
+    """Today's date in Malaysia Time (UTC+8)."""
+    return datetime.now(MYT).date()
+
+
+def myt_start_of_today_utc():
+    """Midnight today in MYT, returned as a naive UTC datetime for DB filtering."""
+    start_myt = datetime.now(MYT).replace(hour=0, minute=0, second=0, microsecond=0)
+    return start_myt.astimezone(timezone.utc).replace(tzinfo=None)
