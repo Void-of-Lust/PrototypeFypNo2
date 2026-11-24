@@ -48,6 +48,8 @@ def create_app():
             elif role == 'dapur':
                 user = Dapur.query.filter_by(nama_pengguna=username).first()
                 if user and check_password_hash(user.kata_laluan, password):
+                    if not user.status:
+                        return render_template('login.html', error='Akaun dapur tidak aktif.')
                     session['user_role'] = 'dapur'
                     return redirect(url_for('kitchen.live_orders'))
 

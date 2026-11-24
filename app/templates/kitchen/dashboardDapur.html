@@ -9,22 +9,27 @@
 <div class="p-3">
     <!-- Tab Filter Dapur -->
     <div class="d-flex gap-2 mb-3">
-        <button class="btn btn-sm btn-info flex-fill k-filter active text-white" onclick="filterKitchen('Semua', this)">Semua</button>
-        <button class="btn btn-sm btn-outline-secondary flex-fill k-filter" onclick="filterKitchen('Baru', this)">Baru</button>
-        <button class="btn btn-sm btn-outline-secondary flex-fill k-filter" onclick="filterKitchen('Diproses', this)">Diproses</button>
-        <button class="btn btn-sm btn-outline-secondary flex-fill k-filter" onclick="filterKitchen('Selesai', this)">Siap</button>
+        <button class="btn btn-sm btn-info flex-fill k-filter active text-white" data-filter="Semua" onclick="filterKitchen('Semua', this)">Semua</button>
+        <button class="btn btn-sm btn-outline-secondary flex-fill k-filter" data-filter="Baru" onclick="filterKitchen('Baru', this)">Baru</button>
+        <button class="btn btn-sm btn-outline-secondary flex-fill k-filter" data-filter="Diproses" onclick="filterKitchen('Diproses', this)">Diproses</button>
+        <button class="btn btn-sm btn-outline-secondary flex-fill k-filter" data-filter="Selesai" onclick="filterKitchen('Selesai', this)">Siap</button>
     </div>
 
     <div id="kitchen-orders">
         {% for order in orders %}
+        {% set mins_ago = ((now - order.tarikh_masa).total_seconds() // 60)|int if order.tarikh_masa else 0 %}
         <div class="card p-3 mb-2 border-start border-4 order-card" data-status="{{ order.status_pesanan }}">
             <div class="d-flex justify-content-between align-items-center mb-2">
                 <h6 class="fw-bold mb-0 text-primary">• Meja {{ order.pelanggan.no_meja }} <span class="text-muted small">#{{ "%04d"|format(order.id_pesanan) }}</span></h6>
-                <small class="text-muted">{{ order.tarikh_masa.strftime('%H:%M') }}</small>
+                <small class="text-muted">{{ mins_ago }} minit lalu ({{ order.tarikh_masa.strftime('%H:%M') }})</small>
             </div>
 
             <div class="d-flex align-items-center mb-2">
-                <div class="bg-secondary rounded me-2" style="width: 40px; height: 40px;"></div> <!-- Placeholder Gambar -->
+                {% if order.menu and order.menu.gambar_minuman %}
+                <img src="{{ url_for('static', filename='uploads/drinks/' + order.menu.gambar_minuman) }}" alt="{{ order.menu.nama_minuman }}" class="rounded me-2 flex-shrink-0" style="width: 40px; height: 40px; object-fit: cover;">
+                {% else %}
+                <div class="bg-secondary rounded me-2 flex-shrink-0" style="width: 40px; height: 40px;"></div>
+                {% endif %}
                 <div>
                     <p class="mb-0 fw-bold">{{ order.kuantiti }} {{ order.menu.nama_minuman }}</p>
                     {% if order.nota_tambahan %}
@@ -38,6 +43,8 @@
                 <button name="status" value="Diproses" class="btn btn-sm btn-primary rounded-pill px-4">Mula Proses</button>
                 {% elif order.status_pesanan == 'Diproses' %}
                 <button name="status" value="Selesai" class="btn btn-sm btn-success rounded-pill px-4">✔️ Siap!</button>
+                {% else %}
+                <span class="badge bg-success py-2 px-3 rounded-pill">✔️ Selesai</span>
                 {% endif %}
             </form>
         </div>
@@ -48,14 +55,9 @@
 </div>
 
 <script>
-function filterKitchen(status, btn) {
-    document.querySelectorAll('.k-filter').forEach(b => {
-        b.classList.remove('btn-info', 'text-white');
-        b.classList.add('btn-outline-secondary');
-    });
-    btn.classList.remove('btn-outline-secondary');
-    btn.classList.add('btn-info', 'text-white');
+let currentFilter = 'Semua';
 
+function applyKitchenFilter(status) {
     document.querySelectorAll('.order-card').forEach(card => {
         if (status === 'Semua' || card.dataset.status === status) {
             card.style.display = 'block';
@@ -64,5 +66,34 @@ function filterKitchen(status, btn) {
         }
     });
 }
+
+function filterKitchen(status, btn) {
+    currentFilter = status;
+    document.querySelectorAll('.k-filter').forEach(b => {
+        b.classList.remove('btn-info', 'text-white');
+        b.classList.add('btn-outline-secondary');
+    });
+    btn.classList.remove('btn-outline-secondary');
+    btn.classList.add('btn-info', 'text-white');
+    applyKitchenFilter(status);
+}
+
+async function refreshOrders() {
+    try {
+        const res = await fetch('/kitchen/orders');
+        if (!res.ok) return;
+        const html = await res.text();
+        const doc = new DOMParser().parseFromString(html, 'text/html');
+        const fresh = doc.getElementById('kitchen-orders');
+        if (fresh) {
+            document.getElementById('kitchen-orders').innerHTML = fresh.innerHTML;
+            applyKitchenFilter(currentFilter);
+        }
+    } catch (e) {
+        // Ignore transient errors and retry on next interval
+    }
+}
+
+setInterval(refreshOrders, 10000);
 </script>
 {% endblock %}

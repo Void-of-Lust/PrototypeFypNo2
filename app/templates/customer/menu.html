@@ -24,7 +24,7 @@
 
             <div class="row g-2">
                 {% for drink in drinks %}
-                <div class="col-6 drink-item" data-category="{{ drink.kategori }}">
+                <div class="col-6 drink-item" data-category="{{ drink.kategori }}" data-id="{{ drink.id_menu }}" data-name="{{ drink.nama_minuman }}" data-price="{{ drink.harga }}">
                     <div class="card p-2 text-center shadow-sm h-100 border-0">
                         {% if drink.gambar_minuman %}
                         <img src="{{ url_for('static', filename='uploads/drinks/' + drink.gambar_minuman) }}" alt="{{ drink.nama_minuman }}" class="rounded mb-2 w-100" style="height: 100px; object-fit: cover;" loading="lazy">
@@ -40,7 +40,7 @@
                             <button type="button" class="btn btn-sm btn-secondary py-0 px-2" onclick="updateQty('{{ drink.id_menu }}', 1, {{ drink.harga }})">+</button>
                         </div>
                         <input type="hidden" name="qty_{{ drink.id_menu }}" id="qty_input_{{ drink.id_menu }}" value="0">
-                        <input type="text" class="form-control form-control-sm mb-2" name="notes_{{ drink.id_menu }}" placeholder="Nota tambahan..." maxlength="255">
+                        <input type="text" class="form-control form-control-sm mb-2" name="notes_{{ drink.id_menu }}" id="notes_input_{{ drink.id_menu }}" placeholder="Nota tambahan..." maxlength="255">
                     </div>
                 </div>
                 {% endfor %}
@@ -63,6 +63,16 @@
             </div>
             {% endif %}
 
+            <div class="card p-3 border-0 shadow-sm bg-white mb-3">
+                <label class="form-label fw-semibold small mb-2">Jenis Pesanan</label>
+                <div class="d-flex gap-2">
+                    <input type="radio" class="btn-check" name="jenis_pesanan" id="typeDineIn" value="Dine-In" checked>
+                    <label class="btn btn-outline-dark btn-sm flex-fill" for="typeDineIn">Dine-In</label>
+                    <input type="radio" class="btn-check" name="jenis_pesanan" id="typeTakeaway" value="Takeaway">
+                    <label class="btn btn-outline-dark btn-sm flex-fill" for="typeTakeaway">Takeaway</label>
+                </div>
+            </div>
+
             <div class="card p-3 border-0 shadow-sm bg-light">
                 <div class="d-flex justify-content-between mb-2">
                     <span class="fw-semibold">Ringkasan bayaran :</span>
@@ -79,6 +89,7 @@
 
 <script>
 const HAS_FOOD = {{ 'true' if has_food else 'false' }};
+const OPEN_CART = {{ 'true' if open_cart else 'false' }};
 const MAX_QTY = {{ max_qty }};
 const MAX_TOTAL = {{ max_total }};
 let cartTotal = 0;
@@ -115,6 +126,52 @@ function updateQty(id, change, price) {
     }
 }
 
+function renderCartItems() {
+    const container = document.getElementById('cartItemsContainer');
+    container.innerHTML = '';
+    let count = 0;
+
+    document.querySelectorAll('.drink-item').forEach(item => {
+        const id = item.dataset.id;
+        const name = item.dataset.name;
+        const price = parseFloat(item.dataset.price);
+        const qty = parseInt(document.getElementById(`qty_input_${id}`).value) || 0;
+        const notes = (document.getElementById(`notes_input_${id}`).value || '').trim();
+
+        if (qty > 0) {
+            count++;
+            const row = document.createElement('div');
+            row.className = 'card p-2 mb-2 border-0 shadow-sm bg-white';
+            const top = document.createElement('div');
+            top.className = 'd-flex justify-content-between align-items-center';
+            const left = document.createElement('span');
+            left.className = 'fw-semibold small';
+            left.textContent = `${qty}x ${name}`;
+            const right = document.createElement('span');
+            right.className = 'fw-bold small';
+            right.textContent = `RM ${(qty * price).toFixed(2)}`;
+            top.appendChild(left);
+            top.appendChild(right);
+            row.appendChild(top);
+
+            if (notes) {
+                const noteEl = document.createElement('small');
+                noteEl.className = 'text-muted mt-1';
+                noteEl.textContent = `Nota: ${notes}`;
+                row.appendChild(noteEl);
+            }
+            container.appendChild(row);
+        }
+    });
+
+    if (count === 0) {
+        const empty = document.createElement('div');
+        empty.className = 'text-center text-muted small py-3';
+        empty.textContent = HAS_FOOD ? 'Tiada minuman dipilih (Makan Sahaja).' : 'Troli anda kosong.';
+        container.appendChild(empty);
+    }
+}
+
 function toggleCart() {
     let menu = document.getElementById('menuView');
     let cart = document.getElementById('cartView');
@@ -124,8 +181,19 @@ function toggleCart() {
     } else {
         menu.classList.add('d-none');
         cart.classList.remove('d-none');
+        renderCartItems();
         document.getElementById('cartTotalDisplay').innerText = `RM ${cartTotal.toFixed(2)}`;
     }
 }
+
+document.addEventListener('DOMContentLoaded', () => {
+    const activeFilter = document.querySelector('.filter-btn.active');
+    if (activeFilter) {
+        filterCategory('Panas', activeFilter);
+    }
+    if (OPEN_CART) {
+        toggleCart();
+    }
+});
 </script>
 {% endblock %}

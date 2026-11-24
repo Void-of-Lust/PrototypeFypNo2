@@ -9,18 +9,18 @@
 <div class="p-4">
     <div class="card p-3 mb-4 shadow-sm border-0 text-center">
         <div class="mb-3">
-            <h6 class="fw-bold">⏱️ Pesanan Dihantar</h6>
-            <small class="text-muted">Pesanan anda sedang menunggu pengesahan dapur</small>
+            <h6 class="fw-bold" id="statusTitle">⏱️ Pesanan Dihantar</h6>
+            <small class="text-muted" id="statusSubtitle">Pesanan anda sedang menunggu pengesahan dapur</small>
         </div>
 
         <!-- Timeline Stepper -->
         <div class="d-flex justify-content-between position-relative mt-4">
             <div class="progress position-absolute top-50 start-0 translate-middle-y w-100" style="height: 4px; z-index: 1;">
-                <div class="progress-bar bg-dark" role="progressbar" style="width: 33%;"></div>
+                <div class="progress-bar bg-dark" id="statusProgress" role="progressbar" style="width: 33%;"></div>
             </div>
-            <div class="bg-dark text-white rounded-circle position-relative fw-bold d-flex align-items-center justify-content-center" style="width: 30px; height: 30px; z-index: 2;">1</div>
-            <div class="bg-light text-secondary border rounded-circle position-relative fw-bold d-flex align-items-center justify-content-center" style="width: 30px; height: 30px; z-index: 2;">2</div>
-            <div class="bg-light text-secondary border rounded-circle position-relative fw-bold d-flex align-items-center justify-content-center" style="width: 30px; height: 30px; z-index: 2;">3</div>
+            <div id="step1" class="bg-dark text-white rounded-circle position-relative fw-bold d-flex align-items-center justify-content-center" style="width: 30px; height: 30px; z-index: 2;">1</div>
+            <div id="step2" class="bg-light text-secondary border rounded-circle position-relative fw-bold d-flex align-items-center justify-content-center" style="width: 30px; height: 30px; z-index: 2;">2</div>
+            <div id="step3" class="bg-light text-secondary border rounded-circle position-relative fw-bold d-flex align-items-center justify-content-center" style="width: 30px; height: 30px; z-index: 2;">3</div>
         </div>
         <div class="d-flex justify-content-between mt-2 small text-muted">
             <span>Dihantar</span>
@@ -32,7 +32,7 @@
     <div class="card p-3 shadow-sm border-0 mb-4 bg-light">
         <div class="d-flex justify-content-between mb-2 border-bottom pb-2">
             <span class="fw-bold">Ringkasan bayaran :</span>
-            <span class="badge bg-secondary">Meja {{ table_number }}</span>
+            <span class="badge bg-secondary">Meja {{ table_number }} • {{ jenis_pesanan }}</span>
         </div>
         {% for item in orders %}
         <div class="d-flex justify-content-between small mb-1">
@@ -43,20 +43,87 @@
         {% if has_food %}
         <div class="d-flex justify-content-between small mb-1">
             <span>Makanan</span>
-            <span>{% if food_price > 0 %}RM {{ "%.2f"|format(food_price) }}{% else %}Menunggu pengesahan harga{% endif %}</span>
+            <span id="foodPriceDisplay">{% if food_price > 0 %}RM {{ "%.2f"|format(food_price) }}{% else %}Menunggu pengesahan harga{% endif %}</span>
         </div>
         {% endif %}
         <div class="d-flex justify-content-between fw-bold mt-2 pt-2 border-top border-dark">
             <span>Jumlah:</span>
-            <span>RM {{ "%.2f"|format(total_price) }}</span>
+            <span id="totalPriceDisplay">RM {{ "%.2f"|format(total_price) }}</span>
         </div>
     </div>
 
     <div class="d-flex gap-2">
-        <div class="card flex-fill p-2 text-center border-dark"><small>No. Pesanan</small><strong class="fs-5">#000{{ customer_id }}</strong></div>
-        <div class="card flex-fill p-2 text-center border-dark"><small>Masa</small><strong class="fs-5">{{ orders[0].tarikh_masa.strftime('%I:%M %p') if orders else '-' }}</strong></div>
+        <div class="card flex-fill p-2 text-center border-dark"><small>No. Pesanan</small><strong class="fs-5">#{{ "%04d"|format(customer_id) }}</strong></div>
+        <div class="card flex-fill p-2 text-center border-dark"><small>Masa</small><strong class="fs-5">{{ orders[0].tarikh_masa.strftime('%I:%M %p') if orders else (order_time.strftime('%I:%M %p') if order_time else '-') }}</strong></div>
     </div>
 
     <a href="/menu?table={{ table_number }}" class="btn btn-outline-secondary w-100 mt-4 py-2">Tambah menu</a>
 </div>
+
+<script>
+const CUSTOMER_ID = {{ customer_id }};
+const DRINKS_TOTAL = {{ "%.2f"|format(total_price - food_price) }};
+
+function setStepActive(el, active) {
+    if (active) {
+        el.classList.remove('bg-light', 'text-secondary', 'border');
+        el.classList.add('bg-dark', 'text-white');
+    } else {
+        el.classList.remove('bg-dark', 'text-white');
+        el.classList.add('bg-light', 'text-secondary', 'border');
+    }
+}
+
+function updateOrderProgress(orders) {
+    if (!orders || orders.length === 0) return;
+
+    const allDone = orders.every(o => o.status === 'Selesai');
+    const anyProcessing = orders.some(o => o.status === 'Diproses' || o.status === 'Selesai');
+
+    const title = document.getElementById('statusTitle');
+    const subtitle = document.getElementById('statusSubtitle');
+    const bar = document.getElementById('statusProgress');
+    const step2 = document.getElementById('step2');
+    const step3 = document.getElementById('step3');
+
+    if (allDone) {
+        title.textContent = '✔️ Pesanan Siap!';
+        subtitle.textContent = 'Minuman anda telah siap disediakan.';
+        bar.style.width = '100%';
+        setStepActive(step2, true);
+        setStepActive(step3, true);
+    } else if (anyProcessing) {
+        title.textContent = '☕ Sedang Diproses';
+        subtitle.textContent = 'Dapur sedang menyediakan pesanan anda.';
+        bar.style.width = '66%';
+        setStepActive(step2, true);
+        setStepActive(step3, false);
+    } else {
+        title.textContent = '⏱️ Pesanan Dihantar';
+        subtitle.textContent = 'Pesanan anda sedang menunggu pengesahan dapur';
+        bar.style.width = '33%';
+        setStepActive(step2, false);
+        setStepActive(step3, false);
+    }
+}
+
+async function pollStatus() {
+    try {
+        const res = await fetch(`/api/status/${CUSTOMER_ID}`);
+        if (!res.ok) return;
+        const data = await res.json();
+        updateOrderProgress(data.orders);
+        if (typeof data.food_price === 'number' && data.food_price > 0) {
+            const foodEl = document.getElementById('foodPriceDisplay');
+            if (foodEl) foodEl.textContent = `RM ${data.food_price.toFixed(2)}`;
+            document.getElementById('totalPriceDisplay').textContent = `RM ${(DRINKS_TOTAL + data.food_price).toFixed(2)}`;
+        }
+    } catch (e) {
+        // Ignore transient network errors and retry on next interval
+    }
+}
+
+pollStatus();
+setInterval(pollStatus, 5000);
+</script>
 {% endblock %}

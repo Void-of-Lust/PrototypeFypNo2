@@ -32,21 +32,25 @@ def dashboard():
     drinks = Menu.query.all()
     completed_orders = Pesanan.query.filter_by(status_pesanan='Selesai').all()
 
-    # Sales metrics
-    total_sales = sum(order.kuantiti * order.menu.harga for order in completed_orders if order.menu)
-    total_orders = len(completed_orders)
-    total_drinks_sold = sum(order.kuantiti for order in completed_orders)
-
-    # Dynamic 7-Day Sales Calculation
+    # Dynamic 7-Day Sales Calculation & Daily KPIs (Hari Ini)
     today = datetime.utcnow().date()
     chart_days = [today - timedelta(days=i) for i in range(6, -1, -1)]
     sales_by_date = {d: 0.0 for d in chart_days}
 
+    today_sales = Decimal('0.00')
+    today_orders = 0
+    today_drinks_sold = 0
+
     for order in completed_orders:
         if order.tarikh_masa and order.menu:
             order_date = order.tarikh_masa.date()
+            line_total = order.kuantiti * order.menu.harga
             if order_date in sales_by_date:
-                sales_by_date[order_date] += float(order.kuantiti * order.menu.harga)
+                sales_by_date[order_date] += float(line_total)
+            if order_date == today:
+                today_sales += line_total
+                today_orders += 1
+                today_drinks_sold += order.kuantiti
 
     # Food revenue: Pelanggan.harga_makanan is added once per customer. A customer counts when
     # they have at least one completed drink order, or, for a food-only order with no drinks
@@ -57,10 +61,13 @@ def dashboard():
         paid_food_only = not cust.pesanan and cust.status_bayaran == 'Sudah Bayar'
         if not (has_completed_drinks or paid_food_only):
             continue
-        total_sales += cust.harga_makanan
         order_date = customer_order_date(cust)
         if order_date in sales_by_date:
             sales_by_date[order_date] += float(cust.harga_makanan)
+        if order_date == today:
+            today_sales += cust.harga_makanan
+            if paid_food_only:
+                today_orders += 1
 
     max_sale = max(sales_by_date.values()) if sales_by_date and max(sales_by_date.values()) > 0 else 1.0
     chart_data = []
@@ -86,6 +93,7 @@ def dashboard():
             table_data.append({
                 'table_name': t,
                 'customer_id': cust.id_pelanggan,
+                'jenis_pesanan': getattr(cust, 'jenis_pesanan', 'Dine-In'),
                 'status_bayaran': getattr(cust, 'status_bayaran', 'Belum Bayar'),
                 'drinks_total': float(drinks_total),
                 'food_price': float(food_price),
@@ -97,6 +105,7 @@ def dashboard():
             table_data.append({
                 'table_name': t,
                 'customer_id': None,
+                'jenis_pesanan': None,
                 'status_bayaran': 'Tiada Pesanan',
                 'drinks_total': 0.0,
                 'food_price': 0.0,
@@ -109,9 +118,9 @@ def dashboard():
 
     return render_template('admin/dashboardAdmin.html',
                            drinks=drinks,
-                           total_sales=total_sales,
-                           total_orders=total_orders,
-                           total_drinks_sold=total_drinks_sold,
+                           total_sales=today_sales,
+                           total_orders=today_orders,
+                           total_drinks_sold=today_drinks_sold,
                            chart_data=chart_data,
                            table_data=table_data,
                            transactions=transactions)
@@ -185,6 +194,67 @@ def add_menu():
         raise
 
     flash(f'{nama} ditambah ke menu.', 'success')
+    return redirect(url_for('admin.dashboard'))
+
+@admin_bp.route('/menu/<int:drink_id>/edit', methods=['POST'])
+def edit_menu(drink_id):
+    drink = Menu.query.get_or_404(drink_id)
+    nama = (request.form.get('nama_minuman') or '').strip()
+    kategori = request.form.get('kategori', drink.kategori)
+    harga = parse_price(request.form.get('harga'))
+
+    if not nama or len(nama) > 100:
+        flash('Nama minuman diperlukan (maksimum 100 aksara).', 'danger')
+        return redirect(url_for('admin.dashboard'))
+    if kategori not in VALID_CATEGORIES:
+        flash('Kategori tidak sah.', 'danger')
+        return redirect(url_for('admin.dashboard'))
+    if harga is None or harga <= 0:
+        flash('Harga tidak sah. Masukkan nilai lebih daripada 0.', 'danger')
+        return redirect(url_for('admin.dashboard'))
+
+    new_gambar = None
+    old_gambar = drink.gambar_minuman
+    file = request.files.get('gambar_minuman')
+    if file and file.filename:
+        try:
+            new_gambar = save_image(file, drinks_folder())
+        except UploadError as error:
+            flash(str(error), 'danger')
+            return redirect(url_for('admin.dashboard'))
+
+    drink.nama_minuman = nama
+    drink.kategori = kategori
+    drink.harga = harga
+    if new_gambar:
+        drink.gambar_minuman = new_gambar
+
+    try:
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+        delete_upload(drinks_folder(), new_gambar)
+        raise
+
+    if new_gambar and old_gambar:
+        delete_upload(drinks_folder(), old_gambar)
+
+    flash(f'{nama} berjaya dikemaskini.', 'success')
+    return redirect(url_for('admin.dashboard'))
+
+@admin_bp.route('/menu/<int:drink_id>/delete', methods=['POST'])
+def delete_menu(drink_id):
+    drink = Menu.query.get_or_404(drink_id)
+    if drink.pesanan:
+        flash(f'{drink.nama_minuman} mempunyai rekod pesanan dan tidak boleh dipadam. Tukar status kepada tiada.', 'warning')
+        return redirect(url_for('admin.dashboard'))
+
+    old_gambar = drink.gambar_minuman
+    nama = drink.nama_minuman
+    db.session.delete(drink)
+    db.session.commit()
+    delete_upload(drinks_folder(), old_gambar)
+    flash(f'{nama} telah dipadam daripada menu.', 'success')
     return redirect(url_for('admin.dashboard'))
 
 @admin_bp.route('/menu/<int:drink_id>/toggle', methods=['POST'])

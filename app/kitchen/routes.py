@@ -1,8 +1,13 @@
+from datetime import datetime
 from flask import Blueprint, render_template, request, redirect, url_for, session
+from sqlalchemy import or_
 from app.extensions import db
 from app.models import Pesanan
 
 kitchen_bp = Blueprint('kitchen', __name__)
+
+VALID_STATUSES = ('Baru', 'Diproses', 'Selesai')
+
 
 @kitchen_bp.before_request
 def restrict_to_kitchen():
@@ -11,15 +16,20 @@ def restrict_to_kitchen():
 
 @kitchen_bp.route('/orders')
 def live_orders():
-    # Active orders only (excluding 'Selesai') sorted by newest first
-    orders = Pesanan.query.filter(Pesanan.status_pesanan != 'Selesai').order_by(Pesanan.tarikh_masa.desc()).all()
-    return render_template('kitchen/dashboardDapur.html', orders=orders)
+    # Show all active orders plus today's completed orders so the 'Siap' tab works
+    start_of_today = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+    orders = (Pesanan.query
+              .filter(or_(Pesanan.status_pesanan != 'Selesai', Pesanan.tarikh_masa >= start_of_today))
+              .order_by(Pesanan.tarikh_masa.desc())
+              .all())
+    now = datetime.utcnow()
+    return render_template('kitchen/dashboardDapur.html', orders=orders, now=now)
 
 @kitchen_bp.route('/order/<int:order_id>/status', methods=['POST'])
 def update_status(order_id):
     order = Pesanan.query.get_or_404(order_id)
     new_status = request.form.get('status')
-    if new_status:
+    if new_status in VALID_STATUSES:
         order.status_pesanan = new_status
         db.session.commit()
     return redirect(url_for('kitchen.live_orders'))

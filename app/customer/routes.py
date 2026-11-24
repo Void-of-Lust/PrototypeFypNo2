@@ -10,6 +10,7 @@ customer_bp = Blueprint('customer', __name__)
 MAX_QTY_PER_ITEM = 20   # per drink
 MAX_TOTAL_QTY = 50      # per order
 MAX_NOTE_LENGTH = 255   # matches Pesanan.nota_tambahan
+VALID_ORDER_TYPES = ('Dine-In', 'Takeaway')
 
 
 def food_folder():
@@ -50,20 +51,30 @@ def upload_food():
             # session until place_order saves it to the database. Replace any earlier photo.
             delete_upload(food_folder(), session.get('food_image'))
             session['food_image'] = filename
+        if session.get('jenis_sajian') == 'Makan Sahaja' and session.get('food_image'):
+            return redirect(url_for('customer.view_menu', cart=1))
         return redirect(url_for('customer.view_menu'))
     return render_template('customer/uploadFood.html')
 
 @customer_bp.route('/menu')
 def view_menu():
+    table_no = request.args.get('table')
+    if table_no:
+        session['table_number'] = table_no
     current_table = session.get('table_number', 'Dine-In')
     drinks = Menu.query.filter_by(status_menu=True).all()
+    open_cart = request.args.get('cart') == '1'
     return render_template('customer/menu.html', drinks=drinks, table_number=current_table,
                            has_food=bool(session.get('food_image')),
+                           open_cart=open_cart,
                            max_qty=MAX_QTY_PER_ITEM, max_total=MAX_TOTAL_QTY)
 
 @customer_bp.route('/order', methods=['POST'])
 def place_order():
     table_no = session.get('table_number', 'Dine-In')
+    jenis_pesanan = request.form.get('jenis_pesanan', 'Dine-In')
+    if jenis_pesanan not in VALID_ORDER_TYPES:
+        jenis_pesanan = 'Dine-In'
     drinks = Menu.query.filter_by(status_menu=True).all()
 
     # Read and validate the whole form first. Nothing is written to the database
@@ -98,8 +109,8 @@ def place_order():
         flash(f'Jumlah maksimum ialah {MAX_TOTAL_QTY} cawan bagi satu pesanan.', 'danger')
         return redirect(url_for('customer.view_menu'))
 
-    customer = Pelanggan(no_meja=table_no, status_bayaran='Belum Bayar',
-                         gambar_makanan=food_image)
+    customer = Pelanggan(no_meja=table_no, jenis_pesanan=jenis_pesanan,
+                         status_bayaran='Belum Bayar', gambar_makanan=food_image)
     db.session.add(customer)
     db.session.flush()  # assigns id_pelanggan without committing yet
 
@@ -132,17 +143,20 @@ def order_status(customer_id):
 
     return render_template('customer/success.html',
                            table_number=customer.no_meja,
+                           jenis_pesanan=customer.jenis_pesanan,
                            orders=orders,
                            total_price=total_price,
                            has_food=bool(customer.gambar_makanan),
                            food_price=food_price,
-                           customer_id=customer_id)
+                           customer_id=customer_id,
+                           order_time=customer.tarikh_masa)
 
 @customer_bp.route('/api/status/<int:customer_id>')
 def api_order_status(customer_id):
     if session.get('customer_id') != customer_id:
         return jsonify({'error': 'Akses ditolak'}), 403
 
+    customer = Pelanggan.query.get_or_404(customer_id)
     orders = Pesanan.query.filter_by(id_pelanggan=customer_id).all()
     data = [{
         'id_pesanan': o.id_pesanan,
@@ -150,4 +164,8 @@ def api_order_status(customer_id):
         'kuantiti': o.kuantiti,
         'status': o.status_pesanan
     } for o in orders]
-    return jsonify({'orders': data})
+    return jsonify({
+        'orders': data,
+        'food_price': float(customer.harga_makanan or 0),
+        'status_bayaran': customer.status_bayaran,
+    })
