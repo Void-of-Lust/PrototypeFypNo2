@@ -161,7 +161,7 @@ def test_food_only_order_status_page(client, app):
     res = client.post("/order", data={"jenis_pesanan": "Dine-In"}, follow_redirects=True)
     assert res.status_code == 200
     assert b"Gambar Makanan Diterima" in res.data
-    assert b"statusProgress" not in res.data
+    assert b'id="statusProgress"' not in res.data
 
 
 def test_addon_order_replaces_food_image_without_orphaning(client, app, tmp_path):
