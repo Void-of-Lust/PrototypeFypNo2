@@ -10,6 +10,14 @@
     </button>
 </div>
 
+{% if active_customer_id %}
+<div class="px-3 pt-2">
+    <a href="{{ url_for('customer.order_status', customer_id=active_customer_id) }}" class="btn btn-sm btn-outline-secondary w-100">
+        ← Kembali ke Status Pesanan
+    </a>
+</div>
+{% endif %}
+
 <div class="p-3">
     <form action="/order" method="POST" id="orderForm">
         <input type="hidden" name="table_number" value="{{ table_number }}">

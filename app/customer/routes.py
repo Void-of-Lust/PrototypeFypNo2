@@ -64,9 +64,18 @@ def view_menu():
     current_table = session.get('table_number', 'Dine-In')
     drinks = Menu.query.filter_by(status_menu=True).all()
     open_cart = request.args.get('cart') == '1'
+
+    active_customer_id = None
+    existing_id = session.get('customer_id')
+    if existing_id:
+        existing = Pelanggan.query.get(existing_id)
+        if existing and existing.no_meja == current_table and existing.status_bayaran != 'Sudah Bayar':
+            active_customer_id = existing.id_pelanggan
+
     return render_template('customer/menu.html', drinks=drinks, table_number=current_table,
                            has_food=bool(session.get('food_image')),
                            open_cart=open_cart,
+                           active_customer_id=active_customer_id,
                            max_qty=MAX_QTY_PER_ITEM, max_total=MAX_TOTAL_QTY)
 
 @customer_bp.route('/order', methods=['POST'])
@@ -109,10 +118,20 @@ def place_order():
         flash(f'Jumlah maksimum ialah {MAX_TOTAL_QTY} cawan bagi satu pesanan.', 'danger')
         return redirect(url_for('customer.view_menu'))
 
-    customer = Pelanggan(no_meja=table_no, jenis_pesanan=jenis_pesanan,
-                         status_bayaran='Belum Bayar', gambar_makanan=food_image)
-    db.session.add(customer)
-    db.session.flush()  # assigns id_pelanggan without committing yet
+    existing_id = session.get('customer_id')
+    customer = None
+    if existing_id:
+        existing = Pelanggan.query.get(existing_id)
+        if existing and existing.no_meja == table_no and existing.status_bayaran != 'Sudah Bayar':
+            customer = existing
+
+    if customer is None:
+        customer = Pelanggan(no_meja=table_no, jenis_pesanan=jenis_pesanan,
+                             status_bayaran='Belum Bayar', gambar_makanan=food_image)
+        db.session.add(customer)
+        db.session.flush()  # assigns id_pelanggan without committing yet
+    elif food_image and not customer.gambar_makanan:
+        customer.gambar_makanan = food_image
 
     for drink, qty, notes in lines:
         db.session.add(Pesanan(
